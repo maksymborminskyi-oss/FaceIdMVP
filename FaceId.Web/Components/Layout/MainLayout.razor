@@ -1,0 +1,33 @@
+﻿@inherits LayoutComponentBase
+
+<div class="app-shell">
+    <NavMenu />
+
+    <main class="main-content">
+        <header class="topbar">
+            <div class="topbar-heading">
+                <span class="topbat-label">IDENTITY MANAGEMENT</span>
+                <span class="topbat-divider">/</span>
+                <span class="topbat-current">Рабочее пространство</span>
+            </div>
+
+            <div class="topdar-profile">
+                <div class="profile-info">
+                    <span class="profile-name">Администратор</span>
+                    <span class="profile-role">Управление системой</span>
+                </div>
+
+                <div class="profile-avatar">AD</div>
+            </div>
+        </header>
+
+        <div class="page-content">
+            @Body
+        </div>
+
+        <footer class="app-footer">
+            <span>FaceId <span class="footer-separator">.</span> Система идентификации пользователей</span>
+            <span>ASP.NET Core <span class="footer-separator">.</span> .NET 8</span>
+        </footer>
+    </main>
+</div>

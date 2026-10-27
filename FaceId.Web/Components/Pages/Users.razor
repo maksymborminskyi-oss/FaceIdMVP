@@ -1,0 +1,632 @@
+@page "/users"
+@rendermode InteractiveServer
+@using System.Net
+@using System.Net.Http.Json
+@using System.Text.Json
+@inject IHttpClientFactory HttpClientFactory
+
+<PageTitle>Пользователи — FaceID</PageTitle>
+
+<div class="users-page">
+    <div class="page-heading">
+        <div>
+            <div class="eyebrow">УПРАВЛЕНИЕ СИСТЕМОЙ</div>
+            <h1>Пользователи</h1>
+            <p class="page-description">
+                Управление пользователями системы идентификации по лицу.
+            </p>
+        </div>
+
+        <button class="primary-button" @onclick="OpenCreateForm">
+            <span class="button-plus">+</span>
+            Добавить пользователя
+        </button>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(pageMessage))
+    {
+        <div class="alert @(isError ? "alert-error" : "alert-success")">
+            <span>@pageMessage</span>
+            <button class="alert-close" @onclick="ClearMessage">×</button>
+        </div>
+    }
+
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="stat-icon users-icon">♙</div>
+            <div>
+                <div class="stat-label">Всего пользователей</div>
+                <div class="stat-value">@(isLoading ? "—" : users.Count)</div>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon search-icon">⌕</div>
+            <div>
+                <div class="stat-label">Результаты поиска</div>
+                <div class="stat-value">
+                    @(isLoading ? "—" : filteredUsers.Count)
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <section class="users-panel">
+        <div class="panel-heading">
+            <div>
+                <h2>Список пользователей</h2>
+                <p>Просматривай и редактируй данные пользователей.</p>
+            </div>
+
+            <div class="search-box">
+                <span class="search-symbol">⌕</span>
+                <input type="search"
+                       placeholder="Поиск по имени или email..."
+                       @bind="searchText"
+                       @bind:event="oninput" />
+                @if (!string.IsNullOrWhiteSpace(searchText))
+                {
+                    <button class="clear-search"
+                            title="Очистить поиск"
+                            @onclick="ClearSearch">×</button>
+                }
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="loading-state">
+                <div class="spinner"></div>
+                <span>Загрузка пользователей...</span>
+            </div>
+        }
+        else if (filteredUsers.Count == 0)
+        {
+            <div class="empty-state">
+                <div class="empty-icon">♙</div>
+
+                @if (users.Count == 0)
+                {
+                    <h3>Пока нет пользователей</h3>
+                    <p>Добавь первого пользователя, чтобы начать работу.</p>
+                    <button class="primary-button" @onclick="OpenCreateForm">
+                        Добавить пользователя
+                    </button>
+                }
+                else
+                {
+                    <h3>Ничего не найдено</h3>
+                    <p>Попробуй изменить поисковый запрос.</p>
+                    <button class="secondary-button" @onclick="ClearSearch">
+                        Очистить поиск
+                    </button>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="table-wrapper">
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>ПОЛЬЗОВАТЕЛЬ</th>
+                            <th>EMAIL</th>
+                            <th>ДАТА СОЗДАНИЯ</th>
+                            <th class="actions-heading">ДЕЙСТВИЯ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var user in filteredUsers)
+                        {
+                            <tr @key="user.Id">
+                                <td>
+                                    <div class="user-cell">
+                                        <div class="user-avatar">
+                                            @GetInitials(user)
+                                        </div>
+                                        <div class="user-info">
+                                            <span class="user-name">
+                                                @user.FirstName @user.LastName
+                                            </span>
+                                            <span class="user-id">
+                                                ID: @user.Id
+                                            </span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="email-text">@user.Email</span>
+                                </td>
+                                <td>
+                                    <span class="date-text">
+                                        @FormatDate(user.CreatedAt)
+                                    </span>
+                                </td>
+                                <td>
+                                    <div class="row-actions">
+                                        <button class="action-button edit-button"
+                                                title="Редактировать"
+                                                @onclick="() => OpenEditForm(user)">
+                                            ✎
+                                        </button>
+                                        <button class="action-button delete-button"
+                                                title="Удалить"
+                                                @onclick="() => AskDelete(user)">
+                                            ×
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="table-footer">
+                <span>
+                    Показано: @filteredUsers.Count из @users.Count
+                </span>
+                <span>FaceID Management System</span>
+            </div>
+        }
+    </section>
+</div>
+
+@if (showUserForm)
+{
+    <div class="modal-backdrop" @onclick="CloseUserForm">
+        <section class="modal-card"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="user-form-title"
+                 @onclick:stopPropagation="true">
+
+            <div class="modal-heading">
+                <div>
+                    <div class="eyebrow">
+                        @(isEditing ? "ИЗМЕНЕНИЕ ДАННЫХ" : "НОВАЯ ЗАПИСЬ")
+                    </div>
+                    <h2 id="user-form-title">
+                        @(isEditing ? "Редактировать пользователя" : "Новый пользователь")
+                    </h2>
+                    <p>
+                        @(isEditing
+                            ? "Измени данные и сохрани обновления."
+                            : "Заполни данные нового пользователя.")
+                    </p>
+                </div>
+
+                <button class="modal-close"
+                        title="Закрыть"
+                        @onclick="CloseUserForm">×</button>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(formMessage))
+            {
+                <div class="alert alert-error form-alert">
+                    @formMessage
+                </div>
+            }
+
+            <EditForm Model="form" OnValidSubmit="SaveUser">
+                <DataAnnotationsValidator />
+
+                <div class="form-fields">
+                    <div class="form-field">
+                        <label for="first-name">Имя</label>
+                        <InputText id="first-name"
+                                   class="form-input"
+                                   @bind-Value="form.FirstName"
+                                   placeholder="Например, Дмитрий" />
+                        <ValidationMessage For="@(() => form.FirstName)" />
+                    </div>
+
+                    <div class="form-field">
+                        <label for="last-name">Фамилия</label>
+                        <InputText id="last-name"
+                                   class="form-input"
+                                   @bind-Value="form.LastName"
+                                   placeholder="Например, Иванов" />
+                        <ValidationMessage For="@(() => form.LastName)" />
+                    </div>
+
+                    <div class="form-field">
+                        <label for="email">Электронная почта</label>
+                        <InputText id="email"
+                                   class="form-input"
+                                   @bind-Value="form.Email"
+                                   type="email"
+                                   placeholder="name@example.com" />
+                        <ValidationMessage For="@(() => form.Email)" />
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button"
+                            class="secondary-button"
+                            disabled="@isSaving"
+                            @onclick="CloseUserForm">
+                        Отмена
+                    </button>
+
+                    <button type="submit"
+                            class="primary-button"
+                            disabled="@isSaving">
+                        @if (isSaving)
+                        {
+                            <span>Сохранение...</span>
+                        }
+                        else
+                        {
+                            <span>@(isEditing ? "Сохранить изменения" : "Создать пользователя")</span>
+                        }
+                    </button>
+                </div>
+            </EditForm>
+        </section>
+    </div>
+}
+
+@if (showDeleteConfirm && userToDelete is not null)
+{
+    <div class="modal-backdrop" @onclick="CancelDelete">
+        <section class="modal-card delete-modal"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="delete-title"
+                 @onclick:stopPropagation="true">
+
+            <div class="delete-icon">!</div>
+            <h2 id="delete-title">Удалить пользователя?</h2>
+            <p>
+                Пользователь
+                <strong>@userToDelete.FirstName @userToDelete.LastName</strong>
+                будет удалён. Это действие нельзя отменить.
+            </p>
+
+            @if (!string.IsNullOrWhiteSpace(deleteMessage))
+            {
+                <div class="alert alert-error form-alert">
+                    @deleteMessage
+                </div>
+            }
+
+            <div class="modal-actions">
+                <button class="secondary-button"
+                        disabled="@isDeleting"
+                        @onclick="CancelDelete">
+                    Отмена
+                </button>
+                <button class="danger-button"
+                        disabled="@isDeleting"
+                        @onclick="DeleteUser">
+                    @(isDeleting ? "Удаление..." : "Удалить")
+                </button>
+            </div>
+        </section>
+    </div>
+}
+
+@code {
+    private readonly List<UserDto> users = new();
+
+    private UserFormModel form = new();
+    private UserDto? userToDelete;
+
+    private bool isLoading = true;
+    private bool isSaving;
+    private bool isDeleting;
+    private bool showUserForm;
+    private bool showDeleteConfirm;
+    private bool isEditing;
+    private bool isError;
+
+    private int editingUserId;
+    private string searchText = string.Empty;
+    private string pageMessage = string.Empty;
+    private string formMessage = string.Empty;
+    private string deleteMessage = string.Empty;
+
+    private HttpClient Api => HttpClientFactory.CreateClient("FaceIdApi");
+
+    private List<UserDto> filteredUsers =>
+        users
+            .Where(user =>
+                $"{user.FirstName} {user.LastName} {user.Email}"
+                    .Contains(searchText.Trim(), StringComparison.OrdinalIgnoreCase))
+            .OrderBy(user => user.Id)
+            .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsers();
+    }
+
+    private async Task LoadUsers()
+    {
+        isLoading = true;
+
+        try
+        {
+            var result = await Api.GetFromJsonAsync<List<UserDto>>("api/Users");
+
+            users.Clear();
+
+            if (result is not null)
+            {
+                users.AddRange(result);
+            }
+        }
+        catch (HttpRequestException)
+        {
+            ShowPageMessage(
+                "Не удалось подключиться к API. Убедись, что FaceId.Api запущен.",
+                true);
+        }
+        catch (TaskCanceledException)
+        {
+            ShowPageMessage("Превышено время ожидания ответа API.", true);
+        }
+        catch (JsonException)
+        {
+            ShowPageMessage("API вернул данные в неожиданном формате.", true);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void OpenCreateForm()
+    {
+        form = new UserFormModel();
+        formMessage = string.Empty;
+        isEditing = false;
+        editingUserId = 0;
+        showUserForm = true;
+    }
+
+    private void OpenEditForm(UserDto user)
+    {
+        form = new UserFormModel
+        {
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Email = user.Email
+        };
+
+        formMessage = string.Empty;
+        isEditing = true;
+        editingUserId = user.Id;
+        showUserForm = true;
+    }
+
+    private void CloseUserForm()
+    {
+        if (isSaving)
+        {
+            return;
+        }
+
+        showUserForm = false;
+        formMessage = string.Empty;
+    }
+
+    private async Task SaveUser()
+    {
+        if (isSaving)
+        {
+            return;
+        }
+
+        isSaving = true;
+        formMessage = string.Empty;
+
+        try
+        {
+            HttpResponseMessage response;
+
+            if (isEditing)
+            {
+                response = await Api.PutAsJsonAsync(
+                    $"api/Users/{editingUserId}",
+                    new UserRequest
+                    {
+                        FirstName = form.FirstName.Trim(),
+                        LastName = form.LastName.Trim(),
+                        Email = form.Email.Trim()
+                    });
+            }
+            else
+            {
+                response = await Api.PostAsJsonAsync(
+                    "api/Users",
+                    new UserRequest
+                    {
+                        FirstName = form.FirstName.Trim(),
+                        LastName = form.LastName.Trim(),
+                        Email = form.Email.Trim()
+                    });
+            }
+
+            using (response)
+            {
+                if (response.IsSuccessStatusCode)
+                {
+                    showUserForm = false;
+
+                    ShowPageMessage(
+                        isEditing
+                            ? "Данные пользователя успешно обновлены."
+                            : "Пользователь успешно создан.",
+                        false);
+
+                    await LoadUsers();
+                }
+                else if (response.StatusCode == HttpStatusCode.Conflict)
+                {
+                    formMessage = "Пользователь с таким email уже существует.";
+                }
+                else if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    formMessage = "Пользователь не найден. Обнови список и попробуй снова.";
+                }
+                else if (response.StatusCode == HttpStatusCode.BadRequest)
+                {
+                    formMessage = "API отклонил данные. Проверь правильность заполнения полей.";
+                }
+                else
+                {
+                    formMessage = $"Не удалось сохранить пользователя. Код ответа: {(int)response.StatusCode}.";
+                }
+            }
+        }
+        catch (HttpRequestException)
+        {
+            formMessage = "Не удалось подключиться к API. Проверь, запущен ли FaceId.Api.";
+        }
+        catch (TaskCanceledException)
+        {
+            formMessage = "Превышено время ожидания ответа API.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void AskDelete(UserDto user)
+    {
+        userToDelete = user;
+        deleteMessage = string.Empty;
+        showDeleteConfirm = true;
+    }
+
+    private void CancelDelete()
+    {
+        if (isDeleting)
+        {
+            return;
+        }
+
+        showDeleteConfirm = false;
+        userToDelete = null;
+        deleteMessage = string.Empty;
+    }
+
+    private async Task DeleteUser()
+    {
+        if (userToDelete is null || isDeleting)
+        {
+            return;
+        }
+
+        isDeleting = true;
+        deleteMessage = string.Empty;
+
+        try
+        {
+            var response = await Api.DeleteAsync($"api/Users/{userToDelete.Id}");
+
+            using (response)
+            {
+                if (response.IsSuccessStatusCode)
+                {
+                    showDeleteConfirm = false;
+                    userToDelete = null;
+
+                    ShowPageMessage("Пользователь успешно удалён.", false);
+
+                    await LoadUsers();
+                }
+                else if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    deleteMessage = "Пользователь уже не существует. Обнови список.";
+                }
+                else
+                {
+                    deleteMessage = $"Не удалось удалить пользователя. Код ответа: {(int)response.StatusCode}.";
+                }
+            }
+        }
+        catch (HttpRequestException)
+        {
+            deleteMessage = "Не удалось подключиться к API.";
+        }
+        catch (TaskCanceledException)
+        {
+            deleteMessage = "Превышено время ожидания ответа API.";
+        }
+        finally
+        {
+            isDeleting = false;
+        }
+    }
+
+    private void ShowPageMessage(string message, bool error)
+    {
+        pageMessage = message;
+        isError = error;
+    }
+
+    private void ClearMessage()
+    {
+        pageMessage = string.Empty;
+    }
+
+    private void ClearSearch()
+    {
+        searchText = string.Empty;
+    }
+
+    private static string GetInitials(UserDto user)
+    {
+        var first = string.IsNullOrWhiteSpace(user.FirstName)
+            ? ""
+            : user.FirstName[..1].ToUpperInvariant();
+
+        var last = string.IsNullOrWhiteSpace(user.LastName)
+            ? ""
+            : user.LastName[..1].ToUpperInvariant();
+
+        return first + last;
+    }
+
+    private static string FormatDate(DateTime date)
+    {
+        return date.ToString("dd.MM.yyyy");
+    }
+
+    public sealed class UserDto
+    {
+        public int Id { get; set; }
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+    }
+
+    public sealed class UserRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+    }
+
+    public sealed class UserFormModel
+    {
+        [System.ComponentModel.DataAnnotations.Required(
+            ErrorMessage = "Введи имя.")]
+        public string FirstName { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(
+            ErrorMessage = "Введи фамилию.")]
+        public string LastName { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(
+            ErrorMessage = "Введи email.")]
+        [System.ComponentModel.DataAnnotations.EmailAddress(
+            ErrorMessage = "Введи корректный email.")]
+        public string Email { get; set; } = string.Empty;
+    }
+}

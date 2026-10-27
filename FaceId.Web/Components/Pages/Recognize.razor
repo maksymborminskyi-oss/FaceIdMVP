@@ -1,0 +1,261 @@
+@page "/recognize"
+
+@using System.Net.Http.Headers
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Text.Json.Serialization
+
+@inject IHttpClientFactory HttpClientFactory
+
+<PageTitle>Распознавание лица</PageTitle>
+
+<h1>Распознавание лица</h1>
+
+<p>
+    Загрузите фотографию человека. Система проверит,
+    зарегистрировано ли его лицо в базе данных.
+</p>
+
+<div class="recognition-container">
+    <div class="upload-section">
+        <label for="photo">Фотография:</label>
+
+        <InputFile id="photo"
+                   OnChange="OnFileSelected"
+                   accept="image/*" />
+
+        @if (!string.IsNullOrWhiteSpace(selectedFileName))
+        {
+            <p>Выбран файл: @selectedFileName</p>
+        }
+
+        <button class="btn btn-primary"
+                @onclick="RecognizeFace"
+                disabled="@(selectedFile is null || isProcessing)">
+            @(isProcessing ? "Распознавание..." : "Распознать лицо")
+        </button>
+    </div>
+
+    @if (isProcessing)
+    {
+        <p>Обрабатываем фотографию. Пожалуйста, подождите...</p>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger">
+            <strong>Ошибка</strong>
+            <p>@errorMessage</p>
+        </div>
+    }
+
+    @if (result is not null)
+    {
+        @if (result.Recognized && result.User is not null)
+        {
+            <div class="alert alert-success">
+                <h3>Лицо распознано</h3>
+
+                <p>
+                    <strong>ID пользователя:</strong>
+                    @result.User.Id
+                </p>
+
+                <p>
+                    <strong>Имя:</strong>
+                    @result.User.FirstName
+                </p>
+
+                <p>
+                    <strong>Фамилия:</strong>
+                    @result.User.LastName
+                </p>
+
+                <p>
+                    <strong>Email:</strong>
+                    @result.User.Email
+                </p>
+
+                <p>
+                    <strong>Сходство:</strong>
+                    @FormatSimilarity(result.Similarity)
+                </p>
+
+                <p>
+                    <strong>Статус:</strong>
+                    @result.Status
+                </p>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-warning">
+                <h3>Лицо не найдено</h3>
+
+                <p>@result.Message</p>
+
+                @if (result.Similarity.HasValue)
+                {
+                    <p>
+                        <strong>Максимальное сходство:</strong>
+                        @FormatSimilarity(result.Similarity)
+                    </p>
+                }
+
+                <p>
+                    <strong>Статус:</strong>
+                    @result.Status
+                </p>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private IBrowserFile? selectedFile;
+    private string? selectedFileName;
+
+    private bool isProcessing;
+    private string? errorMessage;
+    private RecognitionResponse? result;
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        selectedFileName = selectedFile.Name;
+
+        errorMessage = null;
+        result = null;
+    }
+
+    private async Task RecognizeFace()
+    {
+        if (selectedFile is null)
+        {
+            errorMessage = "Сначала выберите фотографию.";
+            return;
+        }
+
+        isProcessing = true;
+        errorMessage = null;
+        result = null;
+
+        try
+        {
+            var client = HttpClientFactory.CreateClient("FaceIdApi");
+
+            using var content = new MultipartFormDataContent();
+
+            await using var fileStream =
+                selectedFile.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+
+            using var fileContent = new StreamContent(fileStream);
+
+            fileContent.Headers.ContentType =
+                new MediaTypeHeaderValue(
+                    string.IsNullOrWhiteSpace(selectedFile.ContentType)
+                        ? "application/octet-stream"
+                        : selectedFile.ContentType);
+
+            content.Add(fileContent, "file", selectedFile.Name);
+
+            using var response = await client.PostAsync(
+                "api/faces/recognize",
+                content);
+
+            var responseBody =
+                await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                errorMessage =
+                    $"API вернул HTTP {(int)response.StatusCode} " +
+                    $"{response.ReasonPhrase}.";
+
+                if (!string.IsNullOrWhiteSpace(responseBody))
+                {
+                    errorMessage += $" Ответ сервера: {responseBody}";
+                }
+
+                return;
+            }
+
+            result = System.Text.Json.JsonSerializer
+                .Deserialize<RecognitionResponse>(
+                    responseBody,
+                    new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+
+            if (result is null)
+            {
+                errorMessage = "Не удалось прочитать ответ API.";
+            }
+        }
+        catch (IOException)
+        {
+            errorMessage =
+                "Не удалось прочитать фотографию. " +
+                "Проверьте файл и убедитесь, что его размер не превышает 5 МБ.";
+        }
+        catch (HttpRequestException)
+        {
+            errorMessage =
+                "Не удалось подключиться к API. Проверьте, запущен ли FaceId.Api.";
+        }
+        catch (TaskCanceledException)
+        {
+            errorMessage =
+                "Время ожидания ответа истекло. Попробуйте ещё раз.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Произошла ошибка: {ex.Message}";
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    private static string FormatSimilarity(double? similarity)
+    {
+        return similarity.HasValue
+            ? $"{similarity.Value:P2}"
+            : "Нет данных";
+    }
+
+    private sealed class RecognitionResponse
+    {
+        [JsonPropertyName("recognized")]
+        public bool Recognized { get; set; }
+
+        [JsonPropertyName("status")]
+        public string Status { get; set; } = string.Empty;
+
+        [JsonPropertyName("message")]
+        public string? Message { get; set; }
+
+        [JsonPropertyName("similarity")]
+        public double? Similarity { get; set; }
+
+        [JsonPropertyName("user")]
+        public RecognizedUser? User { get; set; }
+    }
+
+    private sealed class RecognizedUser
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("firstName")]
+        public string FirstName { get; set; } = string.Empty;
+
+        [JsonPropertyName("lastName")]
+        public string LastName { get; set; } = string.Empty;
+
+        [JsonPropertyName("email")]
+        public string Email { get; set; } = string.Empty;
+    }
+}

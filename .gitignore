@@ -1,0 +1,32 @@
+# .NET build artifacts
+**/bin/
+**/obj/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# Python virtual environment
+FaceId.Python/.venv/
+**/__pycache__/
+*.py[cod]
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+secrets.json
+appsettings.Local.json
+**/appsettings.Development.json
+
+# User face photos
+FaceId.Api/Storage/faces/*
+!FaceId.Api/Storage/faces/.gitkeep
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

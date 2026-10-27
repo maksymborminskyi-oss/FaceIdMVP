@@ -1,0 +1,404 @@
+@page "/register"
+@rendermode InteractiveServer
+
+@using System.Net.Http.Json
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Forms
+
+@inject IHttpClientFactory HttpClientFactory
+
+<PageTitle>Регистрация лица</PageTitle>
+
+<div class="register-page">
+    <div class="page-header">
+        <div>
+            <h1>Регистрация лица</h1>
+            <p>Добавление фотографии для идентификации пользователя</p>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-error">
+            <strong>Ошибка</strong>
+            <p>@errorMessage</p>
+        </div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="alert alert-success">
+            <strong>Регистрация выполнена</strong>
+            <p>@successMessage</p>
+        </div>
+    }
+
+    <div class="register-card">
+        <div class="section-heading">
+            <h2>Данные регистрации</h2>
+            <p>Выбери пользователя и загрузи фотографию, на которой хорошо видно лицо.</p>
+        </div>
+
+        @if (isLoadingUsers)
+        {
+            <div class="loading-state">
+                Загружаем список пользователей...
+            </div>
+        }
+        else if (users.Count == 0)
+        {
+            <div class="empty-state">
+                <h3>Нет доступных пользователей</h3>
+                <p>Сначала создай пользователя на странице управления пользователями.</p>
+                <a href="/users" class="secondary-button">Перейти к пользователям</a>
+            </div>
+        }
+        else
+        {
+            <div class="form-group">
+                <label for="userSelect">Пользователь</label>
+
+                <InputSelect id="userSelect"
+                             class="form-control"
+                             TValue="int?"
+                             @bind-Value="selectedUserId">
+                    <option value="">Выбери пользователя</option>
+
+                    @foreach (var user in users)
+                    {
+                        <option value="@user.Id">
+                            @user.FirstName @user.LastName — @user.Email
+                        </option>
+                    }
+                </InputSelect>
+            </div>
+
+            <div class="form-group">
+                <label>Фотография лица</label>
+
+                <div class="upload-area">
+                    <InputFile OnChange="OnFileSelected"
+                               accept="image/jpeg,image/png,image/webp"
+                               disabled="@isRegistering" />
+
+                    <p class="upload-hint">
+                        Поддерживаемые форматы: JPEG, PNG, WebP.
+                        Максимальный размер — 5 МБ.
+                    </p>
+
+                    @if (selectedFile is not null)
+                    {
+                        <div class="selected-file">
+                            <span class="file-name">@selectedFile.Name</span>
+                            <span class="file-size">
+                                @FormatFileSize(selectedFile.Size)
+                            </span>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="info-panel">
+                <h3>Требования к фотографии</h3>
+                <ul>
+                    <li>На фотографии должно быть ровно одно лицо.</li>
+                    <li>Лицо должно быть хорошо освещено.</li>
+                    <li>Изображение не должно быть сильно размытым.</li>
+                    <li>Желательно, чтобы лицо было направлено к камере.</li>
+                </ul>
+            </div>
+
+            <button class="primary-button"
+                    @onclick="RegisterFace"
+                    disabled="@(!CanRegister)">
+                @if (isRegistering)
+                {
+                    <span>Обрабатываем фотографию...</span>
+                }
+                else
+                {
+                    <span>Зарегистрировать лицо</span>
+                }
+            </button>
+        }
+    </div>
+
+    <div class="process-card">
+        <h2>Как работает регистрация</h2>
+
+        <div class="process-steps">
+            <div class="process-step">
+                <span class="step-number">01</span>
+                <div>
+                    <strong>Загрузка фотографии</strong>
+                    <p>Изображение передаётся в API.</p>
+                </div>
+            </div>
+
+            <div class="process-step">
+                <span class="step-number">02</span>
+                <div>
+                    <strong>Анализ лица</strong>
+                    <p>Python и InsightFace обнаруживают лицо и вычисляют эмбеддинг.</p>
+                </div>
+            </div>
+
+            <div class="process-step">
+                <span class="step-number">03</span>
+                <div>
+                    <strong>Сохранение данных</strong>
+                    <p>API сохраняет фотографию и данные лица в системе.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private const long MaxFileSize = 5 * 1024 * 1024;
+
+    private List<UserDto> users = new();
+
+    private int? selectedUserId;
+    private IBrowserFile? selectedFile;
+
+    private bool isLoadingUsers = true;
+    private bool isRegistering;
+
+    private string? errorMessage;
+    private string? successMessage;
+
+    private bool CanRegister =>
+        !isLoadingUsers &&
+        !isRegistering &&
+        selectedUserId.HasValue &&
+        selectedFile is not null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsers();
+    }
+
+    private async Task LoadUsers()
+    {
+        isLoadingUsers = true;
+        errorMessage = null;
+
+        try
+        {
+            var client = HttpClientFactory.CreateClient("FaceIdApi");
+
+            var result = await client.GetFromJsonAsync<List<UserDto>>(
+                "api/Users");
+
+            users = result ?? new List<UserDto>();
+        }
+        catch (HttpRequestException)
+        {
+            errorMessage =
+                "Не удалось подключиться к API. Проверь, запущен ли FaceId.Api.";
+        }
+        catch (TaskCanceledException)
+        {
+            errorMessage = "Время ожидания ответа API истекло.";
+        }
+        catch (JsonException)
+        {
+            errorMessage = "API вернул данные пользователей в неожиданном формате.";
+        }
+        finally
+        {
+            isLoadingUsers = false;
+        }
+    }
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        errorMessage = null;
+        successMessage = null;
+        selectedFile = null;
+
+        var file = e.File;
+
+        if (file.Size == 0)
+        {
+            errorMessage = "Выбранный файл пуст.";
+            return;
+        }
+
+        if (file.Size > MaxFileSize)
+        {
+            errorMessage = "Размер фотографии не должен превышать 5 МБ.";
+            return;
+        }
+
+        var allowedTypes = new[]
+        {
+            "image/jpeg",
+            "image/png",
+            "image/webp"
+        };
+
+        if (!allowedTypes.Contains(file.ContentType))
+        {
+            errorMessage = "Выбери фотографию в формате JPEG, PNG или WebP.";
+            return;
+        }
+
+        selectedFile = file;
+    }
+
+    private async Task RegisterFace()
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        if (!selectedUserId.HasValue)
+        {
+            errorMessage = "Сначала выбери пользователя.";
+            return;
+        }
+
+        if (selectedFile is null)
+        {
+            errorMessage = "Сначала выбери фотографию.";
+            return;
+        }
+
+        isRegistering = true;
+
+        try
+        {
+            var client = HttpClientFactory.CreateClient("FaceIdApi");
+
+            using var form = new MultipartFormDataContent();
+
+            await using var fileStream =
+                selectedFile.OpenReadStream(MaxFileSize);
+
+            using var fileContent = new StreamContent(fileStream);
+
+            fileContent.Headers.ContentType =
+                new System.Net.Http.Headers.MediaTypeHeaderValue(
+                    selectedFile.ContentType);
+
+            form.Add(fileContent, "file", selectedFile.Name);
+
+            var response = await client.PostAsync(
+                $"api/faces/users/{selectedUserId.Value}/register",
+                form);
+
+            var responseBody =
+                await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                errorMessage = ExtractErrorMessage(
+                    responseBody,
+                    (int)response.StatusCode);
+
+                return;
+            }
+
+            var result = JsonSerializer.Deserialize<RegisterFaceResponse>(
+                responseBody,
+                new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+            if (result is null)
+            {
+                errorMessage =
+                    "API выполнил запрос, но вернул пустой результат.";
+                return;
+            }
+
+            successMessage =
+                $"Лицо зарегистрировано. Пользователь ID: {result.UserId}, " +
+                $"лицо ID: {result.FaceId}, фотография ID: {result.PhotoId}. " +
+                $"Размерность эмбеддинга: {result.EmbeddingDimensions}.";
+
+            selectedFile = null;
+        }
+        catch (HttpRequestException)
+        {
+            errorMessage =
+                "Не удалось подключиться к API. Проверь, запущен ли FaceId.Api.";
+        }
+        catch (TaskCanceledException)
+        {
+            errorMessage =
+                "Запрос занял слишком много времени. Проверь работу API и Python-сервиса.";
+        }
+        catch (JsonException)
+        {
+            errorMessage =
+                "Не удалось прочитать ответ API. Проверь формат ответа регистрации.";
+        }
+        catch (IOException)
+        {
+            errorMessage = "Не удалось прочитать выбранную фотографию.";
+        }
+        catch (InvalidOperationException)
+        {
+            errorMessage = "Не удалось обработать фотографию. Попробуй выбрать её заново.";
+        }
+        finally
+        {
+            isRegistering = false;
+        }
+    }
+
+    private static string ExtractErrorMessage(string responseBody, int statusCode)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(responseBody);
+            var root = document.RootElement;
+
+            foreach (var propertyName in new[] { "detail", "message", "title" })
+            {
+                if (root.TryGetProperty(propertyName, out var property) &&
+                    property.ValueKind == JsonValueKind.String)
+                {
+                    var value = property.GetString();
+
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        return $"Ошибка {statusCode}: {value}";
+                    }
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Ответ может быть обычным текстом, а не JSON.
+        }
+
+        return $"Регистрация не выполнена. Код HTTP: {statusCode}.";
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        return bytes < 1024 * 1024
+            ? $"{bytes / 1024.0:F1} КБ"
+            : $"{bytes / (1024.0 * 1024):F1} МБ";
+    }
+
+    private sealed class UserDto
+    {
+        public int Id { get; set; }
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+    }
+
+    private sealed class RegisterFaceResponse
+    {
+        public int UserId { get; set; }
+        public int FaceId { get; set; }
+        public int PhotoId { get; set; }
+        public int EmbeddingDimensions { get; set; }
+    }
+}

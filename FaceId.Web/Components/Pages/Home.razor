@@ -1,0 +1,323 @@
+﻿@page "/"
+@rendermode InteractiveServer
+
+@using System.Net.Http.Json
+@using System.Text.Json.Serialization
+
+@inject IHttpClientFactory HttpClientFactory
+
+<PageTitle>Главная | FaceID</PageTitle>
+
+<div class="dashboard">
+
+    <header class="page-header">
+        <div>
+            <div class="breadcrumb">FACEID / ГЛАВНАЯ</div>
+            <h1>Панель управления</h1>
+            <p class="page-description">
+                Мониторинг системы идентификации пользователей по лицу.
+            </p>
+        </div>
+
+        <button class="refresh-button"
+                @onclick="LoadDataAsync"
+                disabled="@isLoading">
+            ↻ Обновить данные
+        </button>
+    </header>
+
+    @if (isLoading)
+    {
+        <div class="info-message">
+            Загружаем данные системы...
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="error-message">
+            <strong>Не удалось получить данные</strong>
+            <p>@errorMessage</p>
+            <button class="retry-button" @onclick="LoadDataAsync">
+                Повторить попытку
+            </button>
+        </div>
+    }
+    else
+    {
+        <section class="welcome-panel">
+            <div class="welcome-content">
+                <div class="welcome-label">СИСТЕМА ИДЕНТИФИКАЦИИ</div>
+                <h2>Добро пожаловать в FaceID</h2>
+                <p>
+                    Управляйте пользователями, регистрируйте лица
+                    и проверяйте результаты распознавания.
+                </p>
+
+                <a class="primary-button" href="/register">
+                    + Зарегистрировать лицо
+                </a>
+            </div>
+
+            <div class="welcome-symbol" aria-hidden="true">
+                <svg viewBox="0 0 120 120" fill="none">
+                    <rect x="17" y="17" width="86" height="86"
+                          rx="25" stroke="currentColor"
+                          stroke-width="1.5" opacity=".3" />
+
+                    <path d="M43 47V41C43 36 47 32 52 32H57"
+                          stroke="currentColor" stroke-width="3"
+                          stroke-linecap="round" />
+
+                    <path d="M77 47V41C77 36 73 32 68 32H63"
+                          stroke="currentColor" stroke-width="3"
+                          stroke-linecap="round" />
+
+                    <path d="M43 73V79C43 84 47 88 52 88H57"
+                          stroke="currentColor" stroke-width="3"
+                          stroke-linecap="round" />
+
+                    <path d="M77 73V79C77 84 73 88 68 88H63"
+                          stroke="currentColor" stroke-width="3"
+                          stroke-linecap="round" />
+
+                    <path d="M49 54V59M71 54V59"
+                          stroke="currentColor" stroke-width="3"
+                          stroke-linecap="round" />
+
+                    <path d="M50 70C56 75 64 75 70 70"
+                          stroke="currentColor" stroke-width="3"
+                          stroke-linecap="round" />
+                </svg>
+            </div>
+        </section>
+
+        <section class="section-heading">
+            <div>
+                <h2>Обзор системы</h2>
+                <p>Текущие показатели</p>
+            </div>
+        </section>
+
+        <section class="stats-grid">
+
+            <article class="stat-card">
+                <div class="stat-top">
+                    <span class="stat-label">Пользователи</span>
+                    <span class="stat-icon blue">♙</span>
+                </div>
+
+                <div class="stat-value">@users.Count</div>
+
+                <div class="stat-caption">
+                    Всего зарегистрировано
+                </div>
+            </article>
+
+            <article class="stat-card">
+                <div class="stat-top">
+                    <span class="stat-label">База пользователей</span>
+                    <span class="stat-icon purple">▤</span>
+                </div>
+
+                <div class="stat-value">
+                    @(users.Count > 0 ? "Активна" : "Пуста")
+                </div>
+
+                <div class="stat-caption">
+                    Данные получены через API
+                </div>
+            </article>
+
+            <article class="stat-card">
+                <div class="stat-top">
+                    <span class="stat-label">API</span>
+                    <span class="stat-icon green">⌁</span>
+                </div>
+
+                <div class="stat-value status-value">
+                    <span class="status-dot"></span>
+                    Подключено
+                </div>
+
+                <div class="stat-caption">
+                    Ответ от сервера получен
+                </div>
+            </article>
+
+        </section>
+
+        <section class="content-grid">
+
+            <article class="content-card">
+                <div class="card-heading">
+                    <div>
+                        <h2>Последние пользователи</h2>
+                        <p>Недавно добавленные записи</p>
+                    </div>
+
+                    <a href="/users" class="text-link">
+                        Все пользователи →
+                    </a>
+                </div>
+
+                @if (users.Count == 0)
+                {
+                    <div class="empty-state">
+                        <div class="empty-icon">♙</div>
+                        <strong>Пока нет пользователей</strong>
+                        <p>Добавьте первого пользователя в систему.</p>
+                        <a href="/users" class="text-link">
+                            Перейти к пользователям →
+                        </a>
+                    </div>
+                }
+                else
+                {
+                    <div class="user-list">
+                        @foreach (var user in users
+                            .OrderByDescending(u => u.Id)
+                            .Take(5))
+                        {
+                            <div class="user-row" @key="user.Id">
+                                <div class="user-avatar">
+                                    @GetInitials(user)
+                                </div>
+
+                                <div class="user-details">
+                                    <strong>
+                                        @user.FirstName @user.LastName
+                                    </strong>
+                                    <span>@user.Email</span>
+                                </div>
+
+                                <span class="user-id">
+                                    #@user.Id
+                                </span>
+                            </div>
+                        }
+                    </div>
+                }
+            </article>
+
+            <article class="content-card actions-card">
+                <div class="card-heading">
+                    <div>
+                        <h2>Быстрые действия</h2>
+                        <p>Основные функции системы</p>
+                    </div>
+                </div>
+
+                <a href="/users" class="action-row">
+                    <span class="action-icon blue">♙</span>
+                    <span class="action-text">
+                        <strong>Пользователи</strong>
+                        <small>Просмотр и управление записями</small>
+                    </span>
+                    <span class="action-arrow">→</span>
+                </a>
+
+                <a href="/register" class="action-row">
+                    <span class="action-icon purple">＋</span>
+                    <span class="action-text">
+                        <strong>Регистрация лица</strong>
+                        <small>Привязка фотографии к пользователю</small>
+                    </span>
+                    <span class="action-arrow">→</span>
+                </a>
+
+                <a href="/recognize" class="action-row">
+                    <span class="action-icon green">◎</span>
+                    <span class="action-text">
+                        <strong>Распознавание</strong>
+                        <small>Идентификация по фотографии</small>
+                    </span>
+                    <span class="action-arrow">→</span>
+                </a>
+
+                <a href="/logs" class="action-row">
+                    <span class="action-icon orange">≡</span>
+                    <span class="action-text">
+                        <strong>Журнал событий</strong>
+                        <small>Результаты проверок доступа</small>
+                    </span>
+                    <span class="action-arrow">→</span>
+                </a>
+            </article>
+
+        </section>
+
+        <div class="dashboard-footer">
+            FaceID · Система идентификации пользователей
+            <span>Данные загружены: @lastUpdated</span>
+        </div>
+    }
+
+</div>
+
+@code {
+    private List<UserDto> users = [];
+    private bool isLoading = true;
+    private string? errorMessage;
+    private string lastUpdated = "—";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var client = HttpClientFactory.CreateClient("FaceIdApi");
+
+            var result = await client.GetFromJsonAsync<List<UserDto>>(
+                "api/Users");
+
+            users = result ?? [];
+
+            lastUpdated = DateTime.Now.ToString("HH:mm:ss");
+        }
+        catch (Exception)
+        {
+            errorMessage =
+                "Не удалось связаться с API. Проверьте, запущен ли " +
+                "FaceId.Api на http://localhost:5048.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private static string GetInitials(UserDto user)
+    {
+        var first = string.IsNullOrWhiteSpace(user.FirstName)
+            ? ""
+            : user.FirstName[..1].ToUpperInvariant();
+
+        var last = string.IsNullOrWhiteSpace(user.LastName)
+            ? ""
+            : user.LastName[..1].ToUpperInvariant();
+
+        return first + last;
+    }
+
+    private sealed class UserDto
+    {
+        [JsonPropertyName("id")]
+        public int Id { get; set; }
+
+        [JsonPropertyName("firstName")]
+        public string FirstName { get; set; } = "";
+
+        [JsonPropertyName("lastName")]
+        public string LastName { get; set; } = "";
+
+        [JsonPropertyName("email")]
+        public string Email { get; set; } = "";
+    }
+}

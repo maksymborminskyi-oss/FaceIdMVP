@@ -1,0 +1,146 @@
+.app-shell {
+    display: flex;
+    min-height: 100vh;
+    background: #f5f7fb;
+}
+
+.main-content {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 100vh;
+}
+
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    min-height: 84px;
+    padding: 0 38px;
+    border-bottom: 1px solid #e8edf4;
+    background: #fff;
+}
+
+.topbar-heading {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.topbar-label {
+    color: #8a97aa;
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 1.2px;
+}
+
+.topbar-divider {
+    color: #cbd3df;
+}
+
+.topbar-current {
+    color: #34445b;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.topbar-profile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.profile-info {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.profile-name {
+    color: #27364b;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.profile-role {
+    color: #8793a5;
+    font-size: 10px;
+}
+
+.profile-avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 39px;
+    height: 39px;
+    border: 1px solid #dbe6f5;
+    border-radius: 50%;
+    background: #edf3fc;
+    color: #315b91;
+    font-size: 11px;
+    font-weight: 750;
+}
+
+.page-content {
+    flex: 1;
+    width: 100%;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 36px 38px 42px;
+}
+
+.app-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 20px 38px;
+    border-top: 1px solid #e8edf4;
+    background: #fff;
+    color: #8793a5;
+    font-size: 10px;
+}
+
+.footer-separator {
+    padding: 0 4px;
+    color: #c0cad8;
+}
+
+@media (max-width: 1000px) {
+    .topbar {
+        padding: 0 24px;
+    }
+
+    .page-content {
+        padding: 28px 24px;
+    }
+
+    .app-footer {
+        padding: 18px 24px;
+    }
+}
+
+@media (max-width: 600px) {
+    .topbar {
+        min-height: 70px;
+        padding: 0 15px;
+    }
+
+    .topbar-label,
+    .topbar-divider,
+    .profile-role {
+        display: none;
+    }
+
+    .page-content {
+        padding: 22px 15px;
+    }
+
+    .app-footer {
+        flex-direction: column;
+        padding: 16px 15px;
+    }
+}
